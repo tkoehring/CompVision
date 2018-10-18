@@ -1,111 +1,139 @@
 import cv2 as cv
 import numpy as np
 import tkFileDialog
+import tkMessageBox
 import math
 import matplotlib.pyplot as plt
 
-def gradMag(img):
-    blur = cv.GaussianBlur(img,(5,5),0)
-    dx = cv.Sobel(blur, cv.CV_64F, 1, 0, ksize=3)
-    dy = cv.Sobel(blur, cv.CV_64F, 0, 1, ksize=3)
-    dx = cv.pow(dx, 2)
-    dy = cv.pow(dy, 2)
-    img = cv.addWeighted(dx, 1, dy, 1, 0)
-    img = cv.pow(img, 0.5)
-    img = cv.convertScaleAbs(img)
-    return img
+def nothing(x):
+    pass
 
-def houghLines(img):
-    thetas = np.deg2rad(np.arange(-90,90,2))
+def houghLines(img, rhoR, thetaR):
+    thetas = np.deg2rad(np.arange(0,180, 2*thetaR))
     diag = int(round(math.sqrt(width * width + height * height)))
-    rhos = np.linspace(-diag, diag, diag * 2)
+    diag -= diag % 2
     cos_t = np.cos(thetas)
     sin_t = np.sin(thetas)
     num_thetas = len(thetas)
-    accumulator = np.zeros((2 * diag, num_thetas), dtype=np.uint8)
+    accumulator = np.zeros((2*diag, num_thetas), dtype=np.uint8)
     y_idx, x_idx = np.nonzero(img)
 
     xSize = x_idx.shape[0]
 
     i = 0
-    t_idx = 0
 
     while i < xSize:
         x = x_idx[i]
         y = y_idx[i]
+        t_idx = 0
 
         while t_idx < num_thetas:
             rho = int(round(x * cos_t[t_idx] + y * sin_t[t_idx])) + diag
             accumulator[rho, t_idx] += 1
             t_idx += 1
         i += 1
-    return accumulator, thetas, rhos
+    return accumulator, thetas, diag
 
-
-def plot_hough_acc(H, plot_title='Hough Accumulator Plot'):
+def plot_hough_acc(accumulator, diag, thetas, plot_title='Hough Accumulator Plot'):
     ''' A function that plot a Hough Space using Matplotlib. '''
-    fig = plt.figure(figsize=(10, 10))
+    fig = plt.figure(figsize=(8, 8))
     fig.canvas.set_window_title(plot_title)
+    plt.imshow(accumulator, cmap='binary_r', extent=[np.rad2deg(thetas[0]), np.rad2deg(thetas[-1]), -diag*0.1, diag*0.1])
 
-    plt.imshow(H, cmap='jet')
-
-    plt.xlabel('Theta Direction'), plt.ylabel('Rho Direction')
+    plt.xlabel('Theta Direction'), plt.ylabel('Rho Direction (1/10 Scale)')
     plt.tight_layout()
-    plt.show()
+    plt.savefig('accumulator.png')
+    fig = cv.imread('accumulator.png', cv.IMREAD_COLOR)
+    figWin = cv.namedWindow('Parameter Space', cv.WINDOW_NORMAL)
+    cv.imshow('Parameter Space', fig)
+    plt.clf()
+def newImg():
+    imgPath = tkFileDialog.askopenfilename()
+    img = cv.imread(imgPath, cv.IMREAD_COLOR)
+    height, width, channel = img.shape
+    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+    edges = cv.Canny(gray, 50, 150, apertureSize=3)
+    cv.imshow('Image', gray)
+    return gray, img, height, width
+
+def reset():
+    return cv.cvtColor(img, cv.COLOR_BGR2GRAY)
+
+def help():
+    tkMessageBox.showinfo("Help", 'Listed below are the key functions:\n'
+                                  'g - Show grayscale image\n'
+                                  'x - Show hough lines\n'
+                                  'p - Show hough parameter space plot\n'
+                                  'z - Load new image\n'
+                                  'h - Open help dialog\n')
+
 
 imgPath = tkFileDialog.askopenfilename()
 img = cv.imread(imgPath, cv.IMREAD_COLOR)
-window = cv.namedWindow('Image', cv.WINDOW_NORMAL)
 height, width, channel = img.shape
-cCount = 0
-trackBar = 0
+window = cv.namedWindow('Image', cv.WINDOW_NORMAL)
+cv.createTrackbar('Hysteresis Min.', 'Image', 50, 100, nothing)
+cv.createTrackbar('Hysteresis Max', 'Image', 110, 200, nothing)
+cv.createTrackbar('Rho Res.', 'Image', 1, 10, nothing)
+cv.createTrackbar('Theta Res.', 'Image', 1, 10, nothing)
+cv.createTrackbar('Peak Threshold', 'Image', 50, 300, nothing)
 
 gray = cv.cvtColor(img,cv.COLOR_BGR2GRAY)
-edges = cv.Canny(gray,50,150,apertureSize = 3)
 
-accumulator, thetas, rhos = houghLines(edges)
+cv.imshow('Image', gray)
+help()
 
-# lines = cv.HoughLines(edges,1,np.pi/180,200)
-# i = 0
-# while i < lines.shape[0]:
-#     rho = lines[i][0][0]
-#     theta = lines[i][0][1]
-#     a = np.cos(theta)
-#     b = np.sin(theta)
-#     x0 = a*rho
-#     y0 = b*rho
-#     x1 = int(x0 + 1000*(-b))
-#     y1 = int(y0 + 1000*(a))
-#     x2 = int(x0 - 1000*(-b))
-#     y2 = int(y0 - 1000*(a))
-#     i = i + 1
-#     cv.line(img,(x1,y1),(x2,y2),(0,0,255),2)
-#
-# cv.imwrite('accumulator.jpg',accumulator)
-# cv.imwrite('edges.jpg',edges)
-# cv.imwrite('houghlines.jpg',img)
-# cv.imshow('Image', img)
+while(True):
+    key = cv.waitKey(1) & 0xFF
 
-indices = np.argpartition(accumulator.flatten(), -2)[-50:]
-test = np.vstack(np.unravel_index(indices, accumulator.shape)).T
-#img = cv.imread(imgPath, cv.IMREAD_COLOR)
+    if key == ord('q'):
+        break
+    elif key == ord('g'):
+        gray = reset()
+        cv.imshow('Image', gray)
+    elif key == ord('h'):
+        help()
+    elif key == ord('p'):
+        plot_hough_acc(accumulator, diag, thetas)
+    elif key == ord('x'):
+        gray = reset()
 
-i = 0
-while i < test.shape[0]:
-    rho = test[i][0]
-    theta = test[i][1]
-    a = np.cos(theta)
-    b = np.sin(theta)
-    x0 = a * rho
-    y0 = b * rho
-    x1 = int(x0 + 1000 * (-b))
-    y1 = int(y0 + 1000 * (a))
-    x2 = int(x0 - 1000 * (-b))
-    y2 = int(y0 - 1000 * (a))
-    cv.line(img,(x1,y1),(x2,y2),(0,255,255),2)
-    i = i + 1
+        hMin = cv.getTrackbarPos('Hysteresis Min.', 'Image')
+        hMax = cv.getTrackbarPos('Hysteresis Max', 'Image')
+        rhoR = cv.getTrackbarPos('Rho Res.', 'Image')
+        thetaR = cv.getTrackbarPos('Theta Res.', 'Image')
+        peakT = cv.getTrackbarPos('Peak Threshold', 'Image')
 
-cv.line(img,(0,0),(100,100),(0,255,255),2)
-cv.imshow('Image', img)
+        edges = cv.Canny(gray, hMin, hMax, apertureSize=3)
+        accumulator, thetas, diag = houghLines(edges, rhoR, thetaR)
+        temp = accumulator.flatten()
 
-plot_hough_acc(accumulator)
+        j = 0
+        idx = []
+        while j < temp.size:
+            if temp[j] > peakT:
+                idx.append(j)
+            j += 1
+
+        vals = np.vstack(np.unravel_index(idx, accumulator.shape)).T
+
+        i = 0
+        while i < vals.shape[0]:
+            rho = vals[i][0] - diag
+            theta = thetas[vals[i, 1]]
+            a = np.cos(theta)
+            b = np.sin(theta)
+            x0 = a * rho
+            y0 = b * rho
+            x1 = int(x0 + 1000 * (-b))
+            y1 = int(y0 + 1000 * (a))
+            x2 = int(x0 - 1000 * (-b))
+            y2 = int(y0 - 1000 * (a))
+            cv.line(gray, (x1, y1), (x2, y2), (0, 0, 255), 1)
+            i = i + 1
+
+        cv.imshow('Image', gray)
+    elif key == ord('z'):
+        gray, img, height, width = newImg()
+
+cv.destroyAllWindows()
